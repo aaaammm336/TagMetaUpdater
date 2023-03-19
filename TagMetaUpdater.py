@@ -1,6 +1,10 @@
 from __future__ import annotations
 import argparse
 import os
+import sys
+huggingface_hub_path = os.path.join(os.getcwd(), 'venv', 'lib', 'site-packages', 'huggingface_hub')
+if huggingface_hub_path not in sys.path:
+    sys.path.append(huggingface_hub_path)
 import configparser
 import huggingface_hub
 import numpy as np

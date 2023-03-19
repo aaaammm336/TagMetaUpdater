@@ -9,6 +9,8 @@ test_backup/
 
 path.txt
 배포 ver.py
+config(로컬용까지 백업).ini
 로컬모델사용(최종).py
 로컬모델사용(최종).spec
 로컬모델사용(최종) config.ini
+.gitignore

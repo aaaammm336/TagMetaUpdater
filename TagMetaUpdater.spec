@@ -6,16 +6,21 @@ block_cipher = None
 
 a = Analysis(
     ['TagMetaUpdater.py'],
-    pathex=['A:\\myenv'],
+    pathex=[
+        'TagMetaUpdater', 
+        'venv\\lib\\site-packages\\huggingface_hub'
+        ],
     binaries=[
-        ('A:\\myenv\\tagmacro\\Lib\\site-packages\\pyexiv2', 'pyexiv2'),
-        ('A:\\myenv\\tagmacro\\Lib\\site-packages\\onnxruntime', 'onnxruntime')
+        ('venv\\Lib\\site-packages\\pyexiv2', 'pyexiv2'),
+        ('venv\\Lib\\site-packages\\onnxruntime', 'onnxruntime')
         ],
     datas=[
         ('config.ini', '.'),
-        ('readme.txt', '.')
+        ('readme.md', '.')
         ],
-    hiddenimports=['onnxruntime'],
+    hiddenimports=[
+        'onnxruntime', 
+        'huggingface_hub'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
