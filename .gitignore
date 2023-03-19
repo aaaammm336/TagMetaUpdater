@@ -1,0 +1,14 @@
+tagmacro/
+venv/
+build/
+dist/
+log/
+model/
+test/
+test_backup/
+
+path.txt
+배포 ver.py
+로컬모델사용(최종).py
+로컬모델사용(최종).spec
+로컬모델사용(최종) config.ini
