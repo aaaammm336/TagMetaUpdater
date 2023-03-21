@@ -1,10 +1,6 @@
 from __future__ import annotations
 import argparse
 import os
-import sys
-huggingface_hub_path = os.path.join(os.getcwd(), 'venv', 'lib', 'site-packages', 'huggingface_hub')
-if huggingface_hub_path not in sys.path:
-    sys.path.append(huggingface_hub_path)
 import configparser
 import huggingface_hub
 import numpy as np
@@ -16,13 +12,45 @@ import pyexiv2
 import shutil
 from Utils import dbimutils
 
-# config.ini에서 불러오기
+
+def create_config_file():
+    config = configparser.ConfigParser()
+    # 모델 설정 추가
+    config.add_section('model')
+    config.set('model', 'selected_model', 'SwinV2')
+    config.set('model', 'threshold', '0.2')
+
+    # 일반 설정 추가
+    config.add_section('settings')
+    config.set('settings', 'backup', 'n')
+    config.set('settings', 'replace_tags', 'n')
+
+    # 파일에 설정 저장
+    with open('config.ini', 'w', encoding='utf-8') as configfile:
+        config.write(configfile)
+create_config_file()
+
+# config.ini
 config = configparser.ConfigParser()
 config.read('config.ini', encoding='utf-8')
-threshold = float(config.get("model", "threshold", fallback="0.6"))
-backup = config.get('settings', 'backup', fallback="n")
-tag_option = config.get('settings', 'tag_option', fallback="n")
-selected_model = config.get("model", "selected_model", fallback="ViT")
+threshold = float(config.get("model", "threshold"))#, fallback="0.2"))
+backup = config.get('settings', 'backup')#, fallback="n")
+replace_tags = config.get('settings', 'replace_tags')#, fallback="n")
+selected_model = config.get("model", "selected_model")#, fallback="ViT")
+
+
+# 이미 처리된 파일 목록을 로드합니다.
+def load_processed_files(processed_files_list):
+    if os.path.exists(processed_files_list):
+        with open(processed_files_list, 'r', encoding='utf-8') as f:
+            processed_files = set(f.read().splitlines())
+    else:
+        processed_files = set()
+    return processed_files
+
+processed_files_list = 'processed_files.txt'
+processed_files = load_processed_files(processed_files_list)
+
 
 
 # 코드의 메타데이터를 정의합니다.
@@ -43,13 +71,10 @@ PNG Info code forked from [AUTOMATIC1111/stable-diffusion-webui](https://github.
 Example image by [ほし☆☆☆](https://www.pixiv.net/en/users/43565085)
 """
 
-# 환경 변수에서 Hugging Face 토큰을 가져옵니다.
 HF_TOKEN = ""
-# 각 모델의 Hugging Face 모델 레포지토리를 정의합니다.
 SWIN_MODEL_REPO = "SmilingWolf/wd-v1-4-swinv2-tagger-v2"
 CONV_MODEL_REPO = "SmilingWolf/wd-v1-4-convnext-tagger-v2"
 VIT_MODEL_REPO = "SmilingWolf/wd-v1-4-vit-tagger-v2"
-# 모델 및 레이블 파일의 이름을 정의합니다.
 MODEL_FILENAME = "model.onnx"
 LABEL_FILENAME = "selected_tags.csv"
 
@@ -99,8 +124,9 @@ def load_labels() -> list[str]:
     character_indexes = list(np.where(df["category"] == 4)[0])
     return tag_names, rating_indexes, general_indexes, character_indexes
 
+
 while True:
-    # path.txt에서 경로를 불러옵니다
+    # 경로를 설정합니다
     def get_folder_path():
         if os.path.exists("path.txt"):
             with open("path.txt", "r", encoding="utf-8") as f:
@@ -174,6 +200,7 @@ while True:
 
     # 작업이 완료된 파일과 실패한 파일의 개수를 저장할 변수 초기화
     success_count = 0
+    skipped_count = 0
     fail_count = 0
     total_files = len(image_files)
 
@@ -251,9 +278,7 @@ while True:
         except OSError:
             return None, None, None, None
 
-
-    #selected_model = "ViT"
-    #selected_model = config.get('model', 'selected_model')
+    #가중치를 로드합니다
     general_threshold = threshold
     character_threshold = threshold
 
@@ -274,7 +299,19 @@ while True:
 
         for i, filename in enumerate(image_files):
             input_image_path = os.path.join(folder_path, filename)
-            input_image = PIL.Image.open(input_image_path)
+
+            # 이미지 파일이 이미 처리되었는지 확인하고 건너뜁니다. (추가)
+            if filename in processed_files:
+                log_print(f"[건너뜀] ({i+1}/{total_files}) 이미 처리된 파일입니다: {filename}", log_path)
+                skipped_count += 1  # 카운트를 증가시킵니다.
+                continue
+
+            try:
+                input_image = PIL.Image.open(input_image_path)
+            except PIL.UnidentifiedImageError:
+                log_print(f"[에러] ({i+1}/{total_files}) {filename} 이미지를 건너뜁니다: 이미지 파일이 손상되었거나 인식할 수 없습니다.", log_path)
+                fail_count += 1
+                continue
 
             result = predict(
                 input_image,
@@ -330,10 +367,8 @@ while True:
                         img.close()
                         continue
 
-
-
                 # 기존 태그를 남기고 새로운 태그를 추가하는 경우
-                if tag_option == "n":
+                if replace_tags == "n":
                     xmp_data = img.read_xmp()
                     if xmp_data is not None and "Xmp.dc.subject" in xmp_data:
                         existing_tags = xmp_data["Xmp.dc.subject"]
@@ -349,6 +384,12 @@ while True:
                 img.close()
                 success_count += 1
 
+                # 작업이 완료된 이미지 파일을 저장하는 부분을 추가합니다.
+                with open(processed_files_list, 'a', encoding='utf-8') as f:
+                    f.write(f'{filename}\n')
+                    processed_files.add(filename)
+
+
             except Exception as e:
                 log_print(f"[에러] ({i+1}/{total_files}) {filename} 파일 작업 실패: {e}", log_path)
                 fail_count += 1
@@ -360,7 +401,7 @@ while True:
 
 
     # 작업이 완료된 파일과 실패한 파일의 개수를 CUI에 출력
-    log_print(f"작업 완료: {success_count}/{total_files}, 실패: {fail_count}", log_path)
+    log_print(f"success: {success_count}/{total_files}, fail: {fail_count}, skip: {skipped_count}", log_path)
     user_input = input("작업을 계속 진행하시려면 'c'를 입력하고, 종료하려면 'q'를 입력하세요: ")
 
     if user_input.lower() == 'q':
