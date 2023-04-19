@@ -9,21 +9,34 @@ import pandas as pd
 import PIL.Image
 import datetime
 import pyexiv2
-import shutil
+#import shutil
 from Utils import dbimutils
 
 
 def create_config_file():
     config = configparser.ConfigParser()
+
+    # 파일에서 설정값 로드
+    if os.path.exists('config.ini'):
+        config.read('config.ini')
+
     # 모델 설정 추가
-    config.add_section('model')
-    config.set('model', 'selected_model', 'SwinV2')
-    config.set('model', 'threshold', '0.2')
+    if not config.has_section('model'):
+        config.add_section('model')
+    if not config.has_option('model', 'selected_model'):
+        config.set('model', 'selected_model', 'ViT')
+    if not config.has_option('model', 'threshold'):
+        config.set('model', 'threshold', '0.2')
 
     # 일반 설정 추가
-    config.add_section('settings')
-    config.set('settings', 'backup', 'n')
-    config.set('settings', 'replace_tags', 'n')
+    if not config.has_section('settings'):
+        config.add_section('settings')
+    #if not config.has_option('settings', 'backup'):
+    #    config.set('settings', 'backup', 'false')
+    if not config.has_option('settings', 'replace_tags'):
+        config.set('settings', 'replace_tags', 'false')
+    if not config.has_option('settings', 'modify_utime'):
+        config.set('settings', 'modify_utime', 'false')
 
     # 파일에 설정 저장
     with open('config.ini', 'w', encoding='utf-8') as configfile:
@@ -33,10 +46,11 @@ create_config_file()
 # config.ini
 config = configparser.ConfigParser()
 config.read('config.ini', encoding='utf-8')
-threshold = float(config.get("model", "threshold"))#, fallback="0.2"))
-backup = config.get('settings', 'backup')#, fallback="n")
-replace_tags = config.get('settings', 'replace_tags')#, fallback="n")
 selected_model = config.get("model", "selected_model")#, fallback="ViT")
+threshold = float(config.get("model", "threshold"))#, fallback="0.2"))
+#backup = config.get('settings', 'backup')#, fallback="false")
+replace_tags = config.get('settings', 'replace_tags')#, fallback="false")
+modify_utime = config.get('settings', 'modify_utime')#, fallback="false")
 
 
 # 이미 처리된 파일 목록을 로드합니다.
@@ -60,15 +74,6 @@ Demo for:
 - [SmilingWolf/wd-v1-4-swinv2-tagger-v2](https://huggingface.co/SmilingWolf/wd-v1-4-convnext-tagger-v2)
 - [SmilingWolf/wd-v1-4-convnext-tagger-v2](https://huggingface.co/SmilingWolf/wd-v1-4-convnext-tagger-v2)
 - [SmilingWolf/wd-v1-4-vit-tagger-v2](https://huggingface.co/SmilingWolf/wd-v1-4-vit-tagger-v2)
-
-Includes "ready to copy" prompt and a prompt analyzer.
-
-Modified from [NoCrypt/DeepDanbooru_string](https://huggingface.co/spaces/NoCrypt/DeepDanbooru_string)  
-Modified from [hysts/DeepDanbooru](https://huggingface.co/spaces/hysts/DeepDanbooru)
-
-PNG Info code forked from [AUTOMATIC1111/stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui)
-
-Example image by [ほし☆☆☆](https://www.pixiv.net/en/users/43565085)
 """
 
 HF_TOKEN = ""
@@ -124,9 +129,8 @@ def load_labels() -> list[str]:
     character_indexes = list(np.where(df["category"] == 4)[0])
     return tag_names, rating_indexes, general_indexes, character_indexes
 
-
+#경로를 설정
 while True:
-    # 경로를 설정합니다
     def get_folder_path():
         if os.path.exists("path.txt"):
             with open("path.txt", "r", encoding="utf-8") as f:
@@ -218,8 +222,6 @@ while True:
     ):
         global loaded_models
 
-        rawimage = image
-
         model = loaded_models[model_name]
         if model is None:
             model = change_model(model_name)
@@ -299,8 +301,7 @@ while True:
 
         for i, filename in enumerate(image_files):
             input_image_path = os.path.join(folder_path, filename)
-
-            # 이미지 파일이 이미 처리되었는지 확인하고 건너뜁니다. (추가)
+            # 이미지 파일이 이미 처리되었는지 확인하고 건너뜁니다.
             if filename in processed_files:
                 log_print(f"[건너뜀] ({i+1}/{total_files}) 이미 처리된 파일입니다: {filename}", log_path)
                 skipped_count += 1  # 카운트를 증가시킵니다.
@@ -308,6 +309,7 @@ while True:
 
             try:
                 input_image = PIL.Image.open(input_image_path)
+                
             except PIL.UnidentifiedImageError:
                 log_print(f"[에러] ({i+1}/{total_files}) {filename} 이미지를 건너뜁니다: 이미지 파일이 손상되었거나 인식할 수 없습니다.", log_path)
                 fail_count += 1
@@ -331,13 +333,12 @@ while True:
                 continue
 
             predicted_tags = [result[2]] + result[3].split(', ') + sorted(result[1].split(', '))
-                #print(predicted_tags)
         
             try:
-                img = pyexiv2.Image(input_image_path)
-
-
-
+                img = pyexiv2.Image(input_image_path, encoding='cp949')
+                #utime 저장
+                old_time = os.path.getmtime(input_image_path)
+                '''
                 def backup_file_with_structure(input_image_path, backup_folder, log_path):
                     # 원본 파일의 상대 경로를 계산
                     rel_path = os.path.relpath(input_image_path, folder_path)
@@ -360,15 +361,16 @@ while True:
                     os.utime(backup_path, (os.path.getatime(input_image_path), os.path.getmtime(input_image_path)))
                     return True
 
-                if backup.lower() == "y":
+
+                if backup.lower() == "true":
                     backup_folder = folder_path + "_backup"
                     success = backup_file_with_structure(input_image_path, backup_folder, log_path)
                     if not success:
                         img.close()
                         continue
-
+                '''
                 # 기존 태그를 남기고 새로운 태그를 추가하는 경우
-                if replace_tags == "n":
+                if replace_tags == "false":
                     xmp_data = img.read_xmp()
                     if xmp_data is not None and "Xmp.dc.subject" in xmp_data:
                         existing_tags = xmp_data["Xmp.dc.subject"]
@@ -379,6 +381,9 @@ while True:
                 img.modify_xmp({'Xmp.dc.subject': predicted_tags})
                 log_print(f"[완료] ({i+1}/{total_files}) (예측된 태그 개수: {len(predicted_tags)}) {filename} 파일 작업 완료", log_path)
                 
+                # utime를 수정
+                if modify_utime == "false":	
+                    os.utime(input_image_path, (old_time, old_time))
 
                 # 이미지 파일 닫기
                 img.close()
@@ -388,6 +393,7 @@ while True:
                 with open(processed_files_list, 'a', encoding='utf-8') as f:
                     f.write(f'{filename}\n')
                     processed_files.add(filename)
+                
 
 
             except Exception as e:
@@ -395,9 +401,8 @@ while True:
                 fail_count += 1
 
 
-    with open(log_path, "r", encoding="utf-8") as f:
+    with open(log_path, "r") as f:
         log_text = f.read()
-
 
 
     # 작업이 완료된 파일과 실패한 파일의 개수를 CUI에 출력
