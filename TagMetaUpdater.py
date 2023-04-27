@@ -9,7 +9,6 @@ import pandas as pd
 import PIL.Image
 import datetime
 import pyexiv2
-#import shutil
 from Utils import dbimutils
 
 
@@ -31,8 +30,6 @@ def create_config_file():
     # 일반 설정 추가
     if not config.has_section('settings'):
         config.add_section('settings')
-    #if not config.has_option('settings', 'backup'):
-    #    config.set('settings', 'backup', 'false')
     if not config.has_option('settings', 'replace_tags'):
         config.set('settings', 'replace_tags', 'false')
     if not config.has_option('settings', 'modify_utime'):
@@ -287,6 +284,7 @@ while True:
     # 로그를 프린트합니다
     def log_print(message, log_path):
         print(message, flush=True)
+        message = message.encode('utf-8')
         with open(log_path, "a") as log_file:
             print(message, file=log_file)
 
@@ -335,40 +333,11 @@ while True:
             predicted_tags = [result[2]] + result[3].split(', ') + sorted(result[1].split(', '))
         
             try:
-                img = pyexiv2.Image(input_image_path, encoding='cp949')
+                img = pyexiv2.Image(input_image_path)#, encoding='cp949')
+
                 #utime 저장
                 old_time = os.path.getmtime(input_image_path)
-                '''
-                def backup_file_with_structure(input_image_path, backup_folder, log_path):
-                    # 원본 파일의 상대 경로를 계산
-                    rel_path = os.path.relpath(input_image_path, folder_path)
 
-                    # 백업 파일 경로 생성
-                    backup_path = os.path.join(backup_folder, rel_path)
-
-                    # 백업 폴더 생성 (상위 폴더 포함)
-                    backup_file_folder = os.path.dirname(backup_path)
-                    os.makedirs(backup_file_folder, exist_ok=True)
-
-                    # 원본 파일을 백업 폴더로 복사 (파일 수정한 날짜를 보존)
-                    try:
-                        shutil.copy2(input_image_path, backup_path)
-                    except Exception as e:
-                        print(f"[에러] {input_image_path} 파일의 백업 실패: {e}", file=open(log_path, "a"))
-                        return False
-
-                    # 백업 파일 수정한 날짜 보존
-                    os.utime(backup_path, (os.path.getatime(input_image_path), os.path.getmtime(input_image_path)))
-                    return True
-
-
-                if backup.lower() == "true":
-                    backup_folder = folder_path + "_backup"
-                    success = backup_file_with_structure(input_image_path, backup_folder, log_path)
-                    if not success:
-                        img.close()
-                        continue
-                '''
                 # 기존 태그를 남기고 새로운 태그를 추가하는 경우
                 if replace_tags == "false":
                     xmp_data = img.read_xmp()
